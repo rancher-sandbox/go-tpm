@@ -7,19 +7,25 @@ import (
 	"strings"
 
 	"github.com/google/go-attestation/attest"
+	"github.com/google/go-tpm-tools/simulator"
+	"github.com/rancher-sandbox/go-tpm/backend"
 )
 
-func ResolveToken(token string) (bool, string, error) {
+func ResolveToken(token string, opts ...Option) (bool, string, error) {
 	if !strings.HasPrefix(token, "tpm://") {
 		return false, token, nil
 	}
 
-	hash, err := GetPubHash()
+	hash, err := GetPubHash(opts...)
 	return true, hash, err
 }
 
-func GetPubHash() (string, error) {
-	ek, err := getEK()
+func GetPubHash(opts ...Option) (string, error) {
+
+	c := &Config{}
+	c.Apply(opts...)
+
+	ek, err := getEK(c)
 	if err != nil {
 		return "", fmt.Errorf("getting EK: %w", err)
 	}
@@ -32,11 +38,37 @@ func GetPubHash() (string, error) {
 	return hash, nil
 }
 
-func getEK() (*attest.EK, error) {
-	var err error
-	tpm, err := attest.OpenTPM(&attest.OpenConfig{
+func getTPM(c *Config) (*attest.TPM, error) {
+
+	cfg := &attest.OpenConfig{
 		TPMVersion: attest.TPMVersion20,
-	})
+	}
+	if c.commandChannel != nil {
+		cfg.CommandChannel = c.commandChannel
+	}
+
+	if c.emulated && c.seed == 0 {
+		sim, err := simulator.Get()
+		if err != nil {
+			return nil, err
+		}
+		cfg.CommandChannel = &backend.FakeTPM{ReadWriteCloser: sim}
+	} else {
+		sim, err := simulator.GetWithFixedSeedInsecure(c.seed)
+		if err != nil {
+			return nil, err
+		}
+		cfg.CommandChannel = &backend.FakeTPM{ReadWriteCloser: sim}
+	}
+
+	return attest.OpenTPM(cfg)
+
+}
+
+func getEK(c *Config) (*attest.EK, error) {
+	var err error
+
+	tpm, err := getTPM(c)
 	if err != nil {
 		return nil, fmt.Errorf("opening tpm: %w", err)
 	}
@@ -44,7 +76,7 @@ func getEK() (*attest.EK, error) {
 
 	eks, err := tpm.EKs()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting eks: %w", err)
 	}
 
 	if len(eks) == 0 {
@@ -63,11 +95,10 @@ func getToken(data *AttestationData) (string, error) {
 	return "Bearer TPM" + base64.StdEncoding.EncodeToString(bytes), nil
 }
 
-func getAttestationData() (*AttestationData, []byte, error) {
+func getAttestationData(c *Config) (*AttestationData, []byte, error) {
 	var err error
-	tpm, err := attest.OpenTPM(&attest.OpenConfig{
-		TPMVersion: attest.TPMVersion20,
-	})
+
+	tpm, err := getTPM(c)
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening tpm: %w", err)
 	}
@@ -77,6 +108,7 @@ func getAttestationData() (*AttestationData, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+
 	ak, err := tpm.NewAK(nil)
 	if err != nil {
 		return nil, nil, err

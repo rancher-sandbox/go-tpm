@@ -16,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func Get(cacerts []byte, url string, header http.Header) ([]byte, error) {
+func Get(cacerts []byte, url string, header http.Header, opts ...Option) ([]byte, error) {
 	dialer := websocket.DefaultDialer
 	if len(cacerts) > 0 {
 		pool := x509.NewCertPool()
@@ -30,12 +30,15 @@ func Get(cacerts []byte, url string, header http.Header) ([]byte, error) {
 		}
 	}
 
-	attestationData, aikBytes, err := getAttestationData()
+	c := &Config{}
+	c.Apply(opts...)
+
+	attestationData, aikBytes, err := getAttestationData(c)
 	if err != nil {
 		return nil, err
 	}
 
-	hash, err := GetPubHash()
+	hash, err := GetPubHash(opts...)
 	if err != nil {
 		return nil, err
 	}
