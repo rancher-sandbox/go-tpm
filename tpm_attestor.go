@@ -43,7 +43,8 @@ type ChallengeResponse struct {
 	Secret []byte
 }
 
-func getPubHash(ek *attest.EK) (string, error) {
+// DecodePubHash returns the public key from an attestation EK
+func DecodePubHash(ek *attest.EK) (string, error) {
 	data, err := pubBytes(ek)
 	if err != nil {
 		return "", err

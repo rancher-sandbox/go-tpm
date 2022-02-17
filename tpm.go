@@ -60,7 +60,7 @@ func GetPubHash(opts ...Option) (string, error) {
 		return "", fmt.Errorf("getting EK: %w", err)
 	}
 
-	hash, err := getPubHash(ek)
+	hash, err := DecodePubHash(ek)
 	if err != nil {
 		return "", fmt.Errorf("hashing EK: %w", err)
 	}
