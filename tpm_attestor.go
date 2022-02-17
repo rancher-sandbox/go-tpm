@@ -23,10 +23,10 @@ import (
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/google/go-attestation/attest"
-	"github.com/pkg/errors"
 )
 
-type attestationData struct {
+// AttestationData is used to generate challanges from EKs
+type AttestationData struct {
 	EK []byte
 	AK *attest.AttestationParameters
 }
@@ -78,37 +78,4 @@ func pubBytes(ek *attest.EK) ([]byte, error) {
 		return nil, fmt.Errorf("error marshaling ec public key: %v", err)
 	}
 	return data, nil
-}
-
-// DecodeEK decodes EK pem bytes to attest.EK
-func DecodeEK(pemBytes []byte) (*attest.EK, error) {
-	block, _ := pem.Decode(pemBytes)
-
-	if block == nil {
-		return nil, errors.New("invalid pemBytes")
-	}
-
-	switch block.Type {
-	case "CERTIFICATE":
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing certificate: %v", err)
-		}
-		return &attest.EK{
-			Certificate: cert,
-			Public:      cert.PublicKey,
-		}, nil
-
-	case "PUBLIC KEY":
-		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("error parsing ecdsa public key: %v", err)
-		}
-
-		return &attest.EK{
-			Public: pub,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("invalid pem type: %s", block.Type)
 }

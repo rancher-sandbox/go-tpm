@@ -1,15 +1,42 @@
 package tpm
 
 import (
+	"bytes"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"strings"
 
+	certx509 "github.com/google/certificate-transparency-go/x509"
+
 	"github.com/google/go-attestation/attest"
 	"github.com/google/go-tpm-tools/simulator"
+	"github.com/pkg/errors"
 	"github.com/rancher-sandbox/go-tpm/backend"
 )
+
+// GenerateChallenge generates a challenge from attestation data and a public endorsed key
+func GenerateChallenge(ek *attest.EK, attestationData *AttestationData) ([]byte, []byte, error) {
+	ap := attest.ActivationParameters{
+		TPMVersion: attest.TPMVersion20,
+		EK:         ek.Public,
+		AK:         *attestationData.AK,
+	}
+
+	secret, ec, err := ap.Generate()
+	if err != nil {
+		return nil, nil, fmt.Errorf("generating challenge: %w", err)
+	}
+
+	challengeBytes, err := json.Marshal(Challenge{EC: ec})
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshalling challenge: %w", err)
+	}
+
+	return secret, challengeBytes, nil
+}
 
 // ResolveToken is just syntax sugar around GetPubHash.
 // If the token provided is in EK's form it just returns it, otherwise
@@ -50,14 +77,14 @@ func getTPM(c *config) (*attest.TPM, error) {
 		cfg.CommandChannel = c.commandChannel
 	}
 
-	if c.emulated && c.seed == 0 {
-		sim, err := simulator.Get()
-		if err != nil {
-			return nil, err
+	if c.emulated {
+		var sim *simulator.Simulator
+		var err error
+		if c.seed != 0 {
+			sim, err = simulator.GetWithFixedSeedInsecure(c.seed)
+		} else {
+			sim, err = simulator.Get()
 		}
-		cfg.CommandChannel = backend.Fake(sim)
-	} else {
-		sim, err := simulator.GetWithFixedSeedInsecure(c.seed)
 		if err != nil {
 			return nil, err
 		}
@@ -73,7 +100,7 @@ func getEK(c *config) (*attest.EK, error) {
 
 	tpm, err := getTPM(c)
 	if err != nil {
-		return nil, fmt.Errorf("opening tpm: %w", err)
+		return nil, fmt.Errorf("opening tpm for decoding EK: %w", err)
 	}
 	defer tpm.Close()
 
@@ -89,7 +116,7 @@ func getEK(c *config) (*attest.EK, error) {
 	return &eks[0], nil
 }
 
-func getToken(data *attestationData) (string, error) {
+func getToken(data *AttestationData) (string, error) {
 	bytes, err := json.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("marshalling attestation data: %w", err)
@@ -98,12 +125,12 @@ func getToken(data *attestationData) (string, error) {
 	return "Bearer TPM" + base64.StdEncoding.EncodeToString(bytes), nil
 }
 
-func getAttestationData(c *config) (*attestationData, []byte, error) {
+func getAttestationData(c *config) (*AttestationData, []byte, error) {
 	var err error
 
 	tpm, err := getTPM(c)
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening tpm: %w", err)
+		return nil, nil, fmt.Errorf("opening tpm for getting attestation data: %w", err)
 	}
 	defer tpm.Close()
 
@@ -117,6 +144,7 @@ func getAttestationData(c *config) (*attestationData, []byte, error) {
 		return nil, nil, err
 	}
 	defer ak.Close(tpm)
+
 	params := ak.AttestationParameters()
 
 	if len(eks) == 0 {
@@ -134,8 +162,73 @@ func getAttestationData(c *config) (*attestationData, []byte, error) {
 		return nil, nil, fmt.Errorf("marshaling AK: %w", err)
 	}
 
-	return &attestationData{
+	return &AttestationData{
 		EK: ekBytes,
 		AK: &params,
 	}, aikBytes, nil
+}
+
+// DecodeEK decodes EK pem bytes to attest.EK
+func DecodeEK(pemBytes []byte) (*attest.EK, error) {
+	block, _ := pem.Decode(pemBytes)
+
+	if block == nil {
+		return nil, errors.New("invalid pemBytes")
+	}
+
+	switch block.Type {
+	case "CERTIFICATE":
+		cert, err := certx509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing certificate: %v", err)
+		}
+		return &attest.EK{
+			Certificate: cert,
+			Public:      cert.PublicKey,
+		}, nil
+
+	case "PUBLIC KEY":
+		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing ecdsa public key: %v", err)
+		}
+
+		return &attest.EK{
+			Public: pub,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("invalid pem type: %s", block.Type)
+}
+
+// GetAttestationData returns attestation data from a TPM bearer token
+func GetAttestationData(header string) (*attest.EK, *AttestationData, error) {
+	tpmBytes, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(header, "Bearer TPM"))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var attestationData AttestationData
+	if err := json.Unmarshal(tpmBytes, &attestationData); err != nil {
+		return nil, nil, err
+	}
+
+	ek, err := DecodeEK(attestationData.EK)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return ek, &attestationData, nil
+}
+
+// ValidateChallenge validates a challange against a secret
+func ValidateChallenge(secret, resp []byte) error {
+	var response ChallengeResponse
+	if err := json.Unmarshal(resp, &response); err != nil {
+		return fmt.Errorf("unmarshalling challenge response: %w", err)
+	}
+	if !bytes.Equal(secret, response.Secret) {
+		return fmt.Errorf("invalid challenge response")
+	}
+	return nil
 }

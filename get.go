@@ -80,7 +80,7 @@ func Get(url string, opts ...Option) ([]byte, error) {
 		return nil, fmt.Errorf("unmarshaling Challenge: %w", err)
 	}
 
-	challengeResp, err := getChallengeResponse(challenge.EC, aikBytes)
+	challengeResp, err := getChallengeResponse(c, challenge.EC, aikBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -107,10 +107,8 @@ func Get(url string, opts ...Option) ([]byte, error) {
 	return ioutil.ReadAll(msg)
 }
 
-func getChallengeResponse(ec *attest.EncryptedCredential, aikBytes []byte) (*ChallengeResponse, error) {
-	tpm, err := attest.OpenTPM(&attest.OpenConfig{
-		TPMVersion: attest.TPMVersion20,
-	})
+func getChallengeResponse(c *config, ec *attest.EncryptedCredential, aikBytes []byte) (*ChallengeResponse, error) {
+	tpm, err := getTPM(c)
 	if err != nil {
 		return nil, fmt.Errorf("opening tpm: %w", err)
 	}
