@@ -1,35 +1,64 @@
 package tpm
 
-import "github.com/google/go-attestation/attest"
+import (
+	"net/http"
 
-type Config struct {
+	"github.com/google/go-attestation/attest"
+)
+
+type config struct {
 	emulated       bool
 	commandChannel attest.CommandChannelTPM20
 	seed           int64
+
+	cacerts []byte
+	header  http.Header
 }
 
-type Option func(c *Config) error
+// Option is a generic option for TPM configuration
+type Option func(c *config) error
 
-var Emulated Option = func(c *Config) error {
+// Emulated sets an emulated device in place of a real native TPM device.
+// Note, the emulated device is embedded and it is unsafe.
+// Should just be used for testing.
+var Emulated Option = func(c *config) error {
 	c.emulated = true
 	return nil
 }
 
+// WithCAs sets the root CAs for the request
+func WithCAs(ca []byte) Option {
+	return func(c *config) error {
+		c.cacerts = ca
+		return nil
+	}
+}
+
+// WithHeader sets a specific header for the request
+func WithHeader(header http.Header) Option {
+	return func(c *config) error {
+		c.header = header
+		return nil
+	}
+}
+
+// WithSeed sets a permanent seed. Used with TPM emulated device.
 func WithSeed(s int64) Option {
-	return func(c *Config) error {
+	return func(c *config) error {
 		c.seed = s
 		return nil
 	}
 }
 
+// WithCommandChannel overrides the TPM command channel
 func WithCommandChannel(cc attest.CommandChannelTPM20) Option {
-	return func(c *Config) error {
+	return func(c *config) error {
 		c.commandChannel = cc
 		return nil
 	}
 }
 
-func (c *Config) Apply(opts ...Option) error {
+func (c *config) apply(opts ...Option) error {
 	for _, o := range opts {
 		if err := o(c); err != nil {
 			return err

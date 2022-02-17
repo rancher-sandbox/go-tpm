@@ -16,11 +16,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func Get(cacerts []byte, url string, header http.Header, opts ...Option) ([]byte, error) {
+// Get retrieves a message from a remote ws server after
+// a successfully process of the TPM challenge
+func Get(url string, opts ...Option) ([]byte, error) {
+	c := &config{}
+	c.apply(opts...)
+
+	header := c.header
+	if c.header == nil {
+		header = http.Header{}
+	}
+
 	dialer := websocket.DefaultDialer
-	if len(cacerts) > 0 {
+	if len(c.cacerts) > 0 {
 		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(cacerts)
+		pool.AppendCertsFromPEM(c.cacerts)
 		dialer = &websocket.Dialer{
 			Proxy:            http.ProxyFromEnvironment,
 			HandshakeTimeout: 45 * time.Second,
@@ -29,9 +39,6 @@ func Get(cacerts []byte, url string, header http.Header, opts ...Option) ([]byte
 			},
 		}
 	}
-
-	c := &Config{}
-	c.Apply(opts...)
 
 	attestationData, aikBytes, err := getAttestationData(c)
 	if err != nil {
@@ -48,9 +55,6 @@ func Get(cacerts []byte, url string, header http.Header, opts ...Option) ([]byte
 		return nil, err
 	}
 
-	if header == nil {
-		header = http.Header{}
-	}
 	header.Add("Authorization", token)
 	wsURL := strings.Replace(url, "http", "ws", 1)
 	logrus.Infof("Using TPMHash %s to dial %s", hash, wsURL)

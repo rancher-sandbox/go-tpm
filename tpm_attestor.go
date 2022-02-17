@@ -23,21 +23,22 @@ import (
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/google/go-attestation/attest"
+	"github.com/pkg/errors"
 )
 
-type AttestationData struct {
+type attestationData struct {
 	EK []byte
 	AK *attest.AttestationParameters
 }
 
+// Challenge represent the struct returned from the ws server,
+// used to resolve the TPM challenge.
 type Challenge struct {
 	EC *attest.EncryptedCredential
 }
 
-type KeyData struct {
-	Keys []string `json:"keys"`
-}
-
+// ChallengeResponse represent the struct returned to the ws server
+// as a challenge response.
 type ChallengeResponse struct {
 	Secret []byte
 }
@@ -52,7 +53,7 @@ func getPubHash(ek *attest.EK) (string, error) {
 	return hashEncoded, nil
 }
 
-func EncodeEK(ek *attest.EK) ([]byte, error) {
+func encodeEK(ek *attest.EK) ([]byte, error) {
 	if ek.Certificate != nil {
 		return pem.EncodeToMemory(&pem.Block{
 			Type:  "CERTIFICATE",
@@ -77,4 +78,37 @@ func pubBytes(ek *attest.EK) ([]byte, error) {
 		return nil, fmt.Errorf("error marshaling ec public key: %v", err)
 	}
 	return data, nil
+}
+
+// DecodeEK decodes EK pem bytes to attest.EK
+func DecodeEK(pemBytes []byte) (*attest.EK, error) {
+	block, _ := pem.Decode(pemBytes)
+
+	if block == nil {
+		return nil, errors.New("invalid pemBytes")
+	}
+
+	switch block.Type {
+	case "CERTIFICATE":
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing certificate: %v", err)
+		}
+		return &attest.EK{
+			Certificate: cert,
+			Public:      cert.PublicKey,
+		}, nil
+
+	case "PUBLIC KEY":
+		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing ecdsa public key: %v", err)
+		}
+
+		return &attest.EK{
+			Public: pub,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("invalid pem type: %s", block.Type)
 }

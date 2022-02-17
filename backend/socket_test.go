@@ -9,7 +9,7 @@ import (
 )
 
 var _ = Describe("SWTPM", func() {
-	socket := os.Getenv("SWTPM_SOCKET")
+	socket := os.Getenv("TPM_SOCKET")
 	Context("opening socket connection", func() {
 		It("fails on invalid files", func() {
 

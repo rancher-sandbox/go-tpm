@@ -11,6 +11,9 @@ import (
 	"github.com/rancher-sandbox/go-tpm/backend"
 )
 
+// ResolveToken is just syntax sugar around GetPubHash.
+// If the token provided is in EK's form it just returns it, otherwise
+// retrieves the pubhash
 func ResolveToken(token string, opts ...Option) (bool, string, error) {
 	if !strings.HasPrefix(token, "tpm://") {
 		return false, token, nil
@@ -20,10 +23,10 @@ func ResolveToken(token string, opts ...Option) (bool, string, error) {
 	return true, hash, err
 }
 
+// GetPubHash returns the EK's pub hash
 func GetPubHash(opts ...Option) (string, error) {
-
-	c := &Config{}
-	c.Apply(opts...)
+	c := &config{}
+	c.apply(opts...)
 
 	ek, err := getEK(c)
 	if err != nil {
@@ -38,7 +41,7 @@ func GetPubHash(opts ...Option) (string, error) {
 	return hash, nil
 }
 
-func getTPM(c *Config) (*attest.TPM, error) {
+func getTPM(c *config) (*attest.TPM, error) {
 
 	cfg := &attest.OpenConfig{
 		TPMVersion: attest.TPMVersion20,
@@ -52,20 +55,20 @@ func getTPM(c *Config) (*attest.TPM, error) {
 		if err != nil {
 			return nil, err
 		}
-		cfg.CommandChannel = &backend.FakeTPM{ReadWriteCloser: sim}
+		cfg.CommandChannel = backend.Fake(sim)
 	} else {
 		sim, err := simulator.GetWithFixedSeedInsecure(c.seed)
 		if err != nil {
 			return nil, err
 		}
-		cfg.CommandChannel = &backend.FakeTPM{ReadWriteCloser: sim}
+		cfg.CommandChannel = backend.Fake(sim)
 	}
 
 	return attest.OpenTPM(cfg)
 
 }
 
-func getEK(c *Config) (*attest.EK, error) {
+func getEK(c *config) (*attest.EK, error) {
 	var err error
 
 	tpm, err := getTPM(c)
@@ -86,7 +89,7 @@ func getEK(c *Config) (*attest.EK, error) {
 	return &eks[0], nil
 }
 
-func getToken(data *AttestationData) (string, error) {
+func getToken(data *attestationData) (string, error) {
 	bytes, err := json.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("marshalling attestation data: %w", err)
@@ -95,7 +98,7 @@ func getToken(data *AttestationData) (string, error) {
 	return "Bearer TPM" + base64.StdEncoding.EncodeToString(bytes), nil
 }
 
-func getAttestationData(c *Config) (*AttestationData, []byte, error) {
+func getAttestationData(c *config) (*attestationData, []byte, error) {
 	var err error
 
 	tpm, err := getTPM(c)
@@ -121,7 +124,7 @@ func getAttestationData(c *Config) (*AttestationData, []byte, error) {
 	}
 
 	ek := &eks[0]
-	ekBytes, err := EncodeEK(ek)
+	ekBytes, err := encodeEK(ek)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -131,7 +134,7 @@ func getAttestationData(c *Config) (*AttestationData, []byte, error) {
 		return nil, nil, fmt.Errorf("marshaling AK: %w", err)
 	}
 
-	return &AttestationData{
+	return &attestationData{
 		EK: ekBytes,
 		AK: &params,
 	}, aikBytes, nil
