@@ -30,6 +30,14 @@ func Get(url string, opts ...Option) ([]byte, error) {
 	dialer := websocket.DefaultDialer
 	if len(c.cacerts) > 0 {
 		pool := x509.NewCertPool()
+		if c.systemfallback {
+			systemPool, err := x509.SystemCertPool()
+			if err != nil {
+				return nil, err
+			}
+			pool = systemPool
+		}
+
 		pool.AppendCertsFromPEM(c.cacerts)
 		dialer = &websocket.Dialer{
 			Proxy:            http.ProxyFromEnvironment,

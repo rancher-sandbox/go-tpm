@@ -13,6 +13,8 @@ type config struct {
 
 	cacerts []byte
 	header  http.Header
+
+	systemfallback bool
 }
 
 // Option is a generic option for TPM configuration
@@ -23,6 +25,13 @@ type Option func(c *config) error
 // Should just be used for testing.
 var Emulated Option = func(c *config) error {
 	c.emulated = true
+	return nil
+}
+
+// AppendCustomCAToSystemCA uses the system CA pool as a fallback, appending the custom CA
+// to it.
+var AppendCustomCAToSystemCA Option = func(c *config) error {
+	c.systemfallback = true
 	return nil
 }
 
