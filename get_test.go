@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -107,6 +108,45 @@ var _ = Describe("GET", func() {
 			json.Unmarshal(msg, &result)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(result).To(Equal(map[string]interface{}{"foo": "bar"}))
+		})
+
+	})
+})
+
+// This test is meant to be running manually against a
+// reg. server with a valid cert.
+var _ = Describe("GET", func() {
+	Context("challenges with a remote endpoint", func() {
+		regUrl := os.Getenv("REG_URL")
+
+		expectedMatches := ContainElement("ros-node-{{ trunc 4 .MachineID }}")
+		BeforeEach(func() {
+			if regUrl == "" {
+				Skip("No remote url passed, skipping suite")
+			}
+		})
+
+		It("gets pubhash from remote with a public signed CA", func() {
+			msg, err := Get(regUrl, Emulated, WithSeed(1))
+			result := map[string]interface{}{}
+			json.Unmarshal(msg, &result)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(expectedMatches)
+		})
+
+		It("it fails if we specify a custom CA (invalid)", func() {
+			msg, err := Get(regUrl, Emulated, WithSeed(1), WithCAs([]byte(`dddd`)))
+			result := map[string]interface{}{}
+			json.Unmarshal(msg, &result)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("it pass if appends to system CA", func() {
+			msg, err := Get(regUrl, Emulated, WithSeed(1), AppendCustomCAToSystemCA, WithCAs([]byte(`dddd`)))
+			result := map[string]interface{}{}
+			json.Unmarshal(msg, &result)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(expectedMatches)
 		})
 	})
 })
