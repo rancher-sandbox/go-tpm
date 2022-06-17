@@ -1,7 +1,9 @@
 package tpm
 
 import (
+	"hash/fnv"
 	"net/http"
+	"os"
 
 	"github.com/google/go-attestation/attest"
 )
@@ -63,6 +65,27 @@ func WithSeed(s int64) Option {
 func WithCommandChannel(cc attest.CommandChannelTPM20) Option {
 	return func(c *config) error {
 		c.commandChannel = cc
+		return nil
+	}
+}
+
+func hashit(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
+}
+
+func tokenize() int64 {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return 0
+	}
+	return int64(hashit(hostname))
+}
+
+var EmulatedHostSeed = func() Option {
+	return func(c *config) error {
+		c.seed = tokenize()
 		return nil
 	}
 }
