@@ -83,6 +83,7 @@ func tokenize() int64 {
 	return int64(hashit(hostname))
 }
 
+// EmulatedHostSeed generates a seed based on the hostname
 var EmulatedHostSeed = func() Option {
 	return func(c *config) error {
 		c.seed = tokenize()
