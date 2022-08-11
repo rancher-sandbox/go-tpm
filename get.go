@@ -68,10 +68,14 @@ func Get(url string, opts ...Option) ([]byte, error) {
 	logrus.Infof("Using TPMHash %s to dial %s", hash, wsURL)
 	conn, resp, err := dialer.Dial(wsURL, header)
 	if err != nil {
-		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
-			data, err := ioutil.ReadAll(resp.Body)
-			if err == nil {
-				return nil, errors.New(string(data))
+		if resp != nil {
+			if resp.StatusCode == http.StatusUnauthorized {
+				data, err := ioutil.ReadAll(resp.Body)
+				if err == nil {
+					return nil, errors.New(string(data))
+				}
+			} else {
+				return nil, fmt.Errorf("%w (Status: %s)", err, resp.Status)
 			}
 		}
 		return nil, err
