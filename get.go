@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
@@ -15,6 +16,50 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
+
+// GetAuthToken generates an authentication token from the host TPM.
+// It will return the token as a string and the generated AK that should
+// be saved by the caller for later Authentication.
+func GetAuthToken(opts ...Option) (string, []byte, error) {
+	c := &config{}
+	c.apply(opts...)
+
+	attestationData, akBytes, err := getAttestationData(c)
+	if err != nil {
+		return "", nil, err
+	}
+
+	token, err := getToken(attestationData)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return token, akBytes, err
+}
+
+// Authenticate will read from the passed channel, expecting a challenge from the
+// attestation server, will compute a challenge response via the TPM using the passed
+// Attestation Key (AK) and will send it back to the attestation server.
+func Authenticate(akBytes []byte, channel io.ReadWriter, opts ...Option) error {
+	c := &config{}
+	c.apply(opts...)
+
+	var challenge Challenge
+	if err := json.NewDecoder(channel).Decode(&challenge); err != nil {
+		return fmt.Errorf("unmarshalling Challenge: %w", err)
+	}
+
+	challengeResp, err := getChallengeResponse(c, challenge.EC, akBytes)
+	if err != nil {
+		return err
+	}
+
+	if err := json.NewEncoder(channel).Encode(challengeResp); err != nil {
+		return fmt.Errorf("encoding ChallengeResponse: %w", err)
+	}
+
+	return nil
+}
 
 // Get retrieves a message from a remote ws server after
 // a successfully process of the TPM challenge
