@@ -68,7 +68,13 @@ func GetPubHash(opts ...Option) (string, error) {
 	return hash, nil
 }
 
+var tpm *attest.TPM
+
 func getTPM(c *config) (*attest.TPM, error) {
+
+	if tpm != nil {
+		return tpm, nil
+	}
 
 	cfg := &attest.OpenConfig{
 		TPMVersion: attest.TPMVersion20,
@@ -91,8 +97,9 @@ func getTPM(c *config) (*attest.TPM, error) {
 		cfg.CommandChannel = backend.Fake(sim)
 	}
 
-	return attest.OpenTPM(cfg)
-
+	var err error
+	tpm, err = attest.OpenTPM(cfg)
+	return tpm, err
 }
 
 func getEK(c *config) (*attest.EK, error) {
@@ -102,7 +109,6 @@ func getEK(c *config) (*attest.EK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening tpm for decoding EK: %w", err)
 	}
-	defer tpm.Close()
 
 	eks, err := tpm.EKs()
 	if err != nil {
@@ -132,7 +138,6 @@ func getAttestationData(c *config) (*AttestationData, []byte, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening tpm for getting attestation data: %w", err)
 	}
-	defer tpm.Close()
 
 	eks, err := tpm.EKs()
 	if err != nil {
