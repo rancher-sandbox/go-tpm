@@ -15,7 +15,6 @@ jobs:
     - name: Get dependencies
       run: |
         go install github.com/onsi/ginkgo/v2/ginkgo
-        go install github.com/onsi/gomega/...
     - name: Run tests
       run: |
         ginkgo -r ./...
