@@ -4,15 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/google/go-tpm-tools/simulator"
 	"github.com/gorilla/websocket"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/rancher-sandbox/go-tpm"
+	"github.com/rancher-sandbox/go-tpm/backend"
 )
 
 func writeRead(conn *websocket.Conn, input []byte) ([]byte, error) {
@@ -34,7 +36,7 @@ func writeRead(conn *websocket.Conn, input []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return ioutil.ReadAll(reader)
+	return io.ReadAll(reader)
 }
 
 var upgrader = websocket.Upgrader{
@@ -101,9 +103,13 @@ var _ = Describe("GET", func() {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
+			sim, err := simulator.GetWithFixedSeedInsecure(1)
+			Expect(err).ToNot(HaveOccurred())
+			defer sim.Close()
+
 			WSServer(ctx)
 
-			msg, err := Get("http://localhost:8080/test", Emulated, WithSeed(1))
+			msg, err := Get("http://localhost:8080/test", WithCommandChannel(backend.Fake(sim)))
 			result := map[string]interface{}{}
 			json.Unmarshal(msg, &result)
 			Expect(err).ToNot(HaveOccurred())
